@@ -1,6 +1,7 @@
 const poolPg = require("../db/postgresql");
 const poolMy = require("../db/mysql");
 const moment = require("moment");
+const cron = require("node-cron");
 const { findStringBetween } = require("../utils/utils");
 
 async function getDataFromMySQL() {
@@ -194,6 +195,21 @@ async function insertOrUpdateDataToPostgres(datas, objMappedDatas) {
   }
 }
 
+async function deleteOldData() {
+  const client = await poolPg.connect();
+  try {
+    // Delete yesterday data
+    const yesterday = moment().subtract(1, "days").format("YYYY-MM-DD");
+    const query = `DELETE FROM finnet WHERE tanggal = '${yesterday}'`;
+    await client.query(query);
+    console.log("Old data deleted successfully");
+  } catch (err) {
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // (async () => {
 //   try {
 //     console.log(
@@ -232,3 +248,15 @@ async function runTask() {
 
 // Run immediately
 runTask();
+
+cron.schedule("0 5 * * *", async () => {
+  try {
+    console.log(
+      "Deleting old data from PostgreSQL...",
+      moment().format("YYYY-MM-DD HH:mm:ss")
+    );
+    await deleteOldData();
+  } catch (error) {
+    console.error("Error:", error);
+  }
+});
