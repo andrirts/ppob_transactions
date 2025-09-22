@@ -1,0 +1,19 @@
+{
+  "name": "log-trx-db",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "dotenv": "^17.2.2",
+    "moment": "^2.30.1",
+    "mysql2": "^3.14.5",
+    "node-cron": "^4.2.1",
+    "pg": "^8.16.3"
+  }
+}
