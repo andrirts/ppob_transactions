@@ -10,18 +10,17 @@ async function getDataFromMySQL() {
     FROM transaksi th
     JOIN produk p on th.KodeProduk = p.KodeProduk
     WHERE th.namaterminal = ?
-    AND th.TANGGAL = ? 
     AND th.NamaReseller NOT REGEXP ? 
     ORDER BY th.idtransaksi ASC
     `;
     // const tanggal = moment().subtract(1, "days").format("YYYY-MM-DD");
-    const tanggal = "2025-09-22";
+    // const tanggal = "2025-09-22";
     const namaterminal = "FINNET";
     const namaReseller = "TEST|DEV|RTS";
 
     const [rows] = await poolMy.query(query, [
       namaterminal,
-      tanggal,
+      //   tanggal,
       namaReseller,
     ]);
 
