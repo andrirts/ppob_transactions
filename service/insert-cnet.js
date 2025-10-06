@@ -1,6 +1,7 @@
 const poolPg = require("../db/postgresql");
 const poolMy = require("../db/mysql");
 const moment = require("moment");
+const cron = require("node-cron");
 const { findStringBetween } = require("../utils/utils");
 
 async function getDataFromMySQL() {
