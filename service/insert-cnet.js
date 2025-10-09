@@ -243,7 +243,7 @@ async function runTask() {
     console.error("Error:", error);
   } finally {
     // Schedule the next run 10 minutes later
-    setTimeout(runTask, 10 * 60 * 1000);
+    setTimeout(runTask, 20 * 60 * 1000);
   }
 }
 
