@@ -4,7 +4,7 @@ const moment = require("moment");
 const cron = require("node-cron");
 const { findStringBetween } = require("../utils/utils");
 
-function getMappingErrorMessage(str) {
+async function getMappingErrorMessage(str) {
   if (
     str.includes("MSISDN IS NOT FOUND, PLEASE VERIFY THE MSISDN YOUVE ENTERED")
   ) {
@@ -79,7 +79,7 @@ async function getDataFromMySQL() {
         data["keterangan"].includes("RC:2")
       ) {
         rc = "02";
-        message = getMappingErrorMessage(data["keterangan"]);
+        message = await getMappingErrorMessage(data["keterangan"]);
         sourceOfAlerts = "CNET";
         status = "Failed";
       } else if (data["keterangan"].includes("RC:")) {
@@ -114,7 +114,8 @@ async function getDataFromMySQL() {
           item["tanggal"] === dateTransaction &&
           item["mitra"] === data["NamaReseller"] &&
           item["response"] === resultCode &&
-          item["produk"] === product
+          item["produk"] === product &&
+          item["keterangan"] === message
         );
       });
       if (findIfExists !== -1) {
@@ -122,12 +123,7 @@ async function getDataFromMySQL() {
         groupedDatas[findIfExists]["total_transaction"] += 1;
         continue;
       }
-      // if (rc === "02") {
-      //   console.log(rc);
-      //   console.log(message);
-      //   console.log(status);
-      //   console.log(data);
-      // }
+
       groupedDatas.push({
         tanggal: dateTransaction,
         mitra: data["NamaReseller"],
