@@ -4,6 +4,24 @@ const moment = require("moment");
 const cron = require("node-cron");
 const { findStringBetween } = require("../utils/utils");
 
+function getMappingErrorMessage(str) {
+  if (
+    str.includes("MSISDN IS NOT FOUND, PLEASE VERIFY THE MSISDN YOUVE ENTERED")
+  ) {
+    return "MSISDN IS NOT FOUND, PLEASE VERIFY THE MSISDN YOUVE ENTERED";
+  } else if (str.includes("SUBSCRIBER NOT ELIGIBLE DUE TO BYU BRAND")) {
+    return "SUBSCRIBER NOT ELIGIBLE DUE TO BYU BRAND";
+  } else if (str.includes("PRODUCT NOT ELIGIBLE DUE TO SUBSCRIBER LOCATION")) {
+    return "PRODUCT NOT ELIGIBLE DUE TO SUBSCRIBER LOCATION";
+  } else if (str.includes("TARGET MSISDN BLOCK 1, PLEASE CHECK MSIDN")) {
+    return "TARGET MSISDN BLOCK 1, PLEASE CHECK MSIDN";
+  } else if (str.includes("TARGET MSISDN PENDING, PLEASE CHECK MSIDN")) {
+    return "TARGET MSISDN PENDING, PLEASE CHECK MSIDN";
+  } else {
+    return "Failed";
+  }
+}
+
 async function getDataFromMySQL() {
   try {
     await poolMy.getConnection();
@@ -40,7 +58,10 @@ async function getDataFromMySQL() {
 
       const findSn = await findStringBetween(data["keterangan"], "SN: ", " =");
 
-      if (data["keterangan"].includes("STATUSCODE=1")) {
+      if (
+        data["keterangan"].includes("STATUSCODE=1") ||
+        data["keterangan"].includes("RC:1")
+      ) {
         if (findSn) {
           rc = "00";
           message = "Success";
@@ -54,14 +75,18 @@ async function getDataFromMySQL() {
         }
       } else if (
         data["keterangan"].includes("STATUSCODE=2") ||
-        data["keterangan"].includes("GAGAL")
+        data["keterangan"].includes("GAGAL") ||
+        data["keterangan"].includes("RC:2")
       ) {
         rc = "02";
-        message = "Failed";
+        message = getMappingErrorMessage(data["keterangan"]);
         sourceOfAlerts = "CNET";
         status = "Failed";
       } else if (data["keterangan"].includes("RC:")) {
-        if (data["keterangan"].includes("RC:0068")) {
+        if (
+          data["keterangan"].includes("RC:0068") ||
+          data["keterangan"].includes("RC:68")
+        ) {
           rc = "68";
           message = "Suspect";
           sourceOfAlerts = "CNET";
@@ -97,12 +122,12 @@ async function getDataFromMySQL() {
         groupedDatas[findIfExists]["total_transaction"] += 1;
         continue;
       }
-      if (message == null) {
-        console.log(rc);
-        console.log(message);
-        console.log(status);
-        console.log(data);
-      }
+      // if (rc === "02") {
+      //   console.log(rc);
+      //   console.log(message);
+      //   console.log(status);
+      //   console.log(data);
+      // }
       groupedDatas.push({
         tanggal: dateTransaction,
         mitra: data["NamaReseller"],
