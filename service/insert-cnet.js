@@ -151,9 +151,15 @@ async function checkDataExists(datas) {
   try {
     const existDatas = [];
     const newDatas = [];
-    const query = `SELECT * FROM cnet WHERE tanggal = $1 AND mitra = $2 AND response = $3 AND produk = $4`;
+    const query = `SELECT * FROM cnet WHERE tanggal = $1 AND mitra = $2 AND response = $3 AND produk = $4 AND keterangan = $5`;
     for (const data of datas) {
-      const values = [data.tanggal, data.mitra, data.response, data.produk];
+      const values = [
+        data.tanggal,
+        data.mitra,
+        data.response,
+        data.produk,
+        data.keterangan,
+      ];
       const result = await client.query(query, values);
       if (result.rows.length > 0) {
         existDatas.push(data);
@@ -194,7 +200,7 @@ async function insertOrUpdateDataToPostgres(datas, objMappedDatas) {
         const query = `UPDATE cnet SET
             total_transaction = $1,
             total_harga = $2
-            WHERE tanggal = $3 AND mitra = $4 AND response = $5 AND produk = $6
+            WHERE tanggal = $3 AND mitra = $4 AND response = $5 AND produk = $6 AND keterangan = $7
             `;
         const values = [
           data.total_transaction,
@@ -203,6 +209,7 @@ async function insertOrUpdateDataToPostgres(datas, objMappedDatas) {
           data.mitra,
           data.response,
           data.produk,
+          data.keterangan,
         ];
         await client.query(query, values);
       }
