@@ -4,6 +4,10 @@ const moment = require("moment");
 const cron = require("node-cron");
 const { findStringBetween } = require("../utils/utils");
 
+let retryCount = 0;
+const maxRetries = 5;
+const retryDelay = 5000; // 5 seconds
+
 async function getMappingErrorMessage(str) {
   if (
     str.includes("MSISDN IS NOT FOUND, PLEASE VERIFY THE MSISDN YOUVE ENTERED")
@@ -139,16 +143,31 @@ async function getDataFromMySQL() {
     }
 
     // console.log(groupedDatas);
+    retryCount = 0;
 
     return groupedDatas;
   } catch (err) {
-    throw err;
+    if (err.code === "ETIMEDOUT") {
+      if (retryCount < maxRetries) {
+        retryCount++;
+        console.log(
+          `MySQL connection timed out. Retrying ${retryCount}/${maxRetries} in ${
+            retryDelay / 1000
+          } seconds...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        return getDataFromMySQL();
+      } else {
+        console.error("Max retries reached. Could not connect to MySQL.");
+        throw err;
+      }
+    }
   }
 }
 
 async function checkDataExists(datas) {
-  const client = await poolPg.connect();
   try {
+    const client = await poolPg.connect();
     const existDatas = [];
     const newDatas = [];
     const query = `SELECT * FROM cnet WHERE tanggal = $1 AND mitra = $2 AND response = $3 AND produk = $4 AND keterangan = $5`;
@@ -167,17 +186,30 @@ async function checkDataExists(datas) {
         newDatas.push(data);
       }
     }
+    client.release();
     return { existDatas, newDatas };
   } catch (err) {
-    throw err;
-  } finally {
-    client.release();
+    if (err.code === "ETIMEDOUT") {
+      if (retryCount < maxRetries) {
+        retryCount++;
+        console.log(
+          `PostgreSQL connection timed out. Retrying ${retryCount}/${maxRetries} in ${
+            retryDelay / 1000
+          } seconds...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        return checkDataExists(datas);
+      } else {
+        console.error("Max retries reached. Could not connect to PostgreSQL.");
+        throw err;
+      }
+    }
   }
 }
 
 async function insertOrUpdateDataToPostgres(datas, objMappedDatas) {
-  const client = await poolPg.connect();
   try {
+    const client = await poolPg.connect();
     if (datas.length === 0) {
       console.log("No new data to insert");
       return;
@@ -231,12 +263,24 @@ async function insertOrUpdateDataToPostgres(datas, objMappedDatas) {
 
       await client.query(query, flatValues);
     }
-
+    client.release();
     console.log("Data inserted successfully");
   } catch (err) {
-    throw err;
-  } finally {
-    client.release();
+    if (err.code === "ETIMEDOUT") {
+      if (retryCount < maxRetries) {
+        retryCount++;
+        console.log(
+          `PostgreSQL connection timed out. Retrying ${retryCount}/${maxRetries} in ${
+            retryDelay / 1000
+          } seconds...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        return insertOrUpdateDataToPostgres(datas, objMappedDatas);
+      } else {
+        console.error("Max retries reached. Could not connect to PostgreSQL.");
+        throw err;
+      }
+    }
   }
 }
 
