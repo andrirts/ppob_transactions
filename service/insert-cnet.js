@@ -320,7 +320,7 @@ async function runTask() {
 }
 
 // Run immediately
-runTask();
+// runTask();
 
 cron.schedule("0 5 * * *", async () => {
   try {
@@ -329,6 +329,23 @@ cron.schedule("0 5 * * *", async () => {
       moment().format("YYYY-MM-DD HH:mm:ss")
     );
     await deleteOldData();
+  } catch (error) {
+    console.error("Error:", error);
+  }
+});
+
+cron.schedule("*/20 * * * * ", async () => {
+  try {
+    console.log(
+      "Fetching data from MySQL...",
+      moment().format("YYYY-MM-DD HH:mm:ss")
+    );
+
+    const data = await getDataFromMySQL();
+    const { existDatas, newDatas } = await checkDataExists(data);
+    await insertOrUpdateDataToPostgres(data, { existDatas, newDatas });
+
+    console.log("Process completed.", moment().format("YYYY-MM-DD HH:mm:ss"));
   } catch (error) {
     console.error("Error:", error);
   }
