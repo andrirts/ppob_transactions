@@ -5,8 +5,9 @@ const cron = require("node-cron");
 const { findStringBetween } = require("../utils/utils");
 
 async function getDataFromMySQL() {
+  let client;
   try {
-    await poolMy.getConnection();
+    client = await poolMy.getConnection();
     const query = `SELECT th.idtransaksi, th.tanggal, th.NamaReseller, p.NAMAPRODUK, th.HargaJual, th.keterangan
     FROM transaksi th
     JOIN produk p on th.KodeProduk = p.KodeProduk
@@ -19,7 +20,7 @@ async function getDataFromMySQL() {
     const namaterminal = "FINNET";
     const namaReseller = "TEST|DEV|RTS";
 
-    const [rows] = await poolMy.query(query, [
+    const [rows] = await client.query(query, [
       namaterminal,
       //   tanggal,
       namaReseller,
@@ -105,12 +106,17 @@ async function getDataFromMySQL() {
     return groupedDatas;
   } catch (err) {
     throw err;
+  } finally {
+    if (client) {
+      client.release();
+    }
   }
 }
 
 async function checkDataExists(datas) {
-  const client = await poolPg.connect();
+  let client;
   try {
+    client = await poolPg.connect();
     const existDatas = [];
     const newDatas = [];
     const query = `SELECT * FROM finnet WHERE tanggal = $1 AND mitra = $2 AND response = $3 AND produk = $4`;
@@ -132,8 +138,9 @@ async function checkDataExists(datas) {
 }
 
 async function insertOrUpdateDataToPostgres(datas, objMappedDatas) {
-  const client = await poolPg.connect();
+  let client;
   try {
+    client = await poolPg.connect();
     if (datas.length === 0) {
       console.log("No new data to insert");
       return;
@@ -232,7 +239,6 @@ async function runTask() {
       "Fetching data from MySQL...",
       moment().format("YYYY-MM-DD HH:mm:ss")
     );
-
     const data = await getDataFromMySQL();
     const { existDatas, newDatas } = await checkDataExists(data);
     await insertOrUpdateDataToPostgres(data, { existDatas, newDatas });
