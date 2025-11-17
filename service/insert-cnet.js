@@ -27,8 +27,9 @@ async function getMappingErrorMessage(str) {
 }
 
 async function getDataFromMySQL() {
+  let conn;
   try {
-    await poolMy.getConnection();
+    conn = await poolMy.getConnection();
     const query = `
     SELECT th.idtransaksi, th.tanggal, th.NamaReseller, p.NAMAPRODUK, th.HargaJual, th.keterangan
     FROM transaksi th
@@ -43,7 +44,7 @@ async function getDataFromMySQL() {
     const namaterminal = "CNET";
     const namaReseller = "TEST|DEV|RTS";
 
-    const [rows] = await poolMy.query(query, [
+    const [rows] = await conn.query(query, [
       namaterminal,
       namaReseller,
       //   startDate,
@@ -162,12 +163,17 @@ async function getDataFromMySQL() {
         throw err;
       }
     }
+  } finally {
+    if (conn) {
+      conn.release();
+    }
   }
 }
 
 async function checkDataExists(datas) {
+  let client;
   try {
-    const client = await poolPg.connect();
+    client = await poolPg.connect();
     const existDatas = [];
     const newDatas = [];
     const query = `SELECT * FROM cnet WHERE tanggal = $1 AND mitra = $2 AND response = $3 AND produk = $4 AND keterangan = $5`;
@@ -186,7 +192,6 @@ async function checkDataExists(datas) {
         newDatas.push(data);
       }
     }
-    client.release();
     return { existDatas, newDatas };
   } catch (err) {
     if (err.code === "ETIMEDOUT") {
@@ -204,12 +209,17 @@ async function checkDataExists(datas) {
         throw err;
       }
     }
+  } finally {
+    if (client) {
+      client.release();
+    }
   }
 }
 
 async function insertOrUpdateDataToPostgres(datas, objMappedDatas) {
+  let client;
   try {
-    const client = await poolPg.connect();
+    client = await poolPg.connect();
     if (datas.length === 0) {
       console.log("No new data to insert");
       return;
@@ -263,7 +273,6 @@ async function insertOrUpdateDataToPostgres(datas, objMappedDatas) {
 
       await client.query(query, flatValues);
     }
-    client.release();
     console.log("Data inserted successfully");
   } catch (err) {
     if (err.code === "ETIMEDOUT") {
@@ -281,12 +290,17 @@ async function insertOrUpdateDataToPostgres(datas, objMappedDatas) {
         throw err;
       }
     }
+  } finally {
+    if (client) {
+      client.release();
+    }
   }
 }
 
 async function deleteOldData() {
-  const client = await poolPg.connect();
+  let client;
   try {
+    client = await poolPg.connect();
     // Delete yesterday data
     const yesterday = moment().subtract(1, "days").format("YYYY-MM-DD");
     const query = `DELETE FROM cnet WHERE tanggal = '${yesterday}'`;
@@ -295,7 +309,9 @@ async function deleteOldData() {
   } catch (err) {
     throw err;
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
   }
 }
 
@@ -305,7 +321,6 @@ async function runTask() {
       "Fetching data from MySQL...",
       moment().format("YYYY-MM-DD HH:mm:ss")
     );
-
     const data = await getDataFromMySQL();
     const { existDatas, newDatas } = await checkDataExists(data);
     await insertOrUpdateDataToPostgres(data, { existDatas, newDatas });
