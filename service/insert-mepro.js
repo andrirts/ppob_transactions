@@ -356,6 +356,7 @@ async function runTask() {
 
 // Run immediately
 // runTask();
+console.log("MEPRO service started...");
 
 cron.schedule("0 5 * * *", async () => {
   try {
