@@ -9,9 +9,7 @@ const maxRetries = 5;
 const retryDelay = 5000; // 5 seconds
 
 async function getMappingErrorMessage(str) {
-  if (
-    str.includes("MSISDN IS NOT FOUND, PLEASE VERIFY THE MSISDN YOUVE ENTERED")
-  ) {
+  if (str.includes("MSISDN IS NOT FOUND, PLEASE VERIFY THE MSISDN")) {
     return "MSISDN IS NOT FOUND, PLEASE VERIFY THE MSISDN YOUVE ENTERED";
   } else if (str.includes("SUBSCRIBER NOT ELIGIBLE DUE TO BYU BRAND")) {
     return "SUBSCRIBER NOT ELIGIBLE DUE TO BYU BRAND";
@@ -35,7 +33,7 @@ async function getDataFromMySQL() {
     FROM transaksi th
     JOIN produk p on th.KodeProduk = p.KodeProduk
     WHERE th.namaterminal = ?
-    AND th.NamaReseller NOT REGEXP ? 
+    AND th.NamaReseller NOT REGEXP ?
     ORDER BY th.idtransaksi ASC
     `;
     // const tanggal = moment().subtract(1, "days").format("YYYY-MM-DD");
@@ -148,6 +146,7 @@ async function getDataFromMySQL() {
 
     return groupedDatas;
   } catch (err) {
+    console.log(err);
     if (err.code === "ETIMEDOUT") {
       if (retryCount < maxRetries) {
         retryCount++;
@@ -209,6 +208,7 @@ async function checkDataExists(datas) {
         throw err;
       }
     }
+    throw err;
   } finally {
     if (client) {
       client.release();
