@@ -31,7 +31,7 @@ function getPrevious3HourWindow() {
   return {
     date: start.format("YYYY-MM-DD"),
     startTime: start.format("HH:mm:ss"),
-    endTime: end.format("HH:mm:ss"),
+    endTime: end.subtract(1, "seconds").format("HH:mm:ss"), // to make it inclusive of the last second
   };
 }
 
@@ -58,7 +58,7 @@ async function getDataFromMySQL() {
     join produk p
     on p.KodeProduk = t.KodeProduk
     where tanggal = ?
-    and jam >= ? and jam < ?
+    and jam >= ? and jam <= ?
     and jenistransaksi in ('1','6')
     group by NamaReseller, statustransaksi, NAMAPRODUK, jam_group;
     `;
