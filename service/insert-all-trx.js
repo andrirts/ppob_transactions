@@ -43,7 +43,8 @@ async function getDataFromMySQL() {
     select CONCAT(
         LPAD(FLOOR(HOUR(JAM)/3)*3, 2, '0'), ':00 - ',
         LPAD(FLOOR(HOUR(JAM)/3)*3 + 2, 2, '0'), ':59'
-    ) AS jam_group,tanggal,
+    ) AS jam_group,
+    tanggal,
     NAMAPRODUK,
     NamaReseller,
     t.KodeProduk,
@@ -60,7 +61,7 @@ async function getDataFromMySQL() {
     where tanggal = ?
     and jam >= ? and jam <= ?
     and jenistransaksi in ('1','6')
-    group by NamaReseller, statustransaksi, NAMAPRODUK, jam_group;
+    group by NamaReseller, statustransaksi, KodeProduk, jam_group, tanggal;
     `;
     const { date, startTime, endTime } = getPrevious3HourWindow();
 
