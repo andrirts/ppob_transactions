@@ -58,9 +58,7 @@ async function getDataFromMySQL() {
     from transaksi t
     join produk p
     on p.KodeProduk = t.KodeProduk
-    where tanggal = ?
-    and jam >= ? and jam <= ?
-    and jenistransaksi in ('1','6')
+    where jenistransaksi in ('1','6')
     group by NamaReseller, statustransaksi, KodeProduk, jam_group, tanggal;
     `;
     const { date, startTime, endTime } = getPrevious3HourWindow();
@@ -110,14 +108,14 @@ async function insertDataToPostgres(datas) {
     const values = mappedDatas
       .map(
         (_, i) =>
-          `(${cols.map((_, j) => `$${i * cols.length + j + 1}`).join(",")})`
+          `(${cols.map((_, j) => `$${i * cols.length + j + 1}`).join(",")})`,
       )
       .join(",");
 
     const flatValues = mappedDatas.flatMap((obj) => cols.map((c) => obj[c]));
 
     const query = `INSERT INTO summary_transaction (${cols.join(
-      ","
+      ",",
     )}) VALUES ${values}`;
 
     await client.query(query, flatValues);
@@ -131,17 +129,35 @@ async function insertDataToPostgres(datas) {
   }
 }
 
+async function deleteDataFromPostgres() {
+  let client;
+  try {
+    client = await poolPg.connect();
+    const query = `DELETE FROM summary_transaction
+                   WHERE tanggal::date >= NOW() - INTERVAL '2 day';`;
+    await client.query(query);
+    console.log("Old data deleted successfully");
+  } catch (err) {
+    throw err;
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
+}
+
 cron.schedule("0 0 */3 * * *", async () => {
   try {
     console.log(
       "Starting data insertion task...",
-      moment().format("YYYY-MM-DD HH:mm:ss")
+      moment().format("YYYY-MM-DD HH:mm:ss"),
     );
+    await deleteDataFromPostgres();
     const dataFromMySQL = await getDataFromMySQL();
     await insertDataToPostgres(dataFromMySQL);
     console.log(
       "Data insertion task completed.",
-      moment().format("YYYY-MM-DD HH:mm:ss")
+      moment().format("YYYY-MM-DD HH:mm:ss"),
     );
   } catch (err) {
     console.error("Error:", err);
@@ -152,13 +168,14 @@ cron.schedule("0 0 */3 * * *", async () => {
 //   try {
 //     console.log(
 //       "Starting data insertion task...",
-//       moment().format("YYYY-MM-DD HH:mm:ss")
+//       moment().format("YYYY-MM-DD HH:mm:ss"),
 //     );
+//     await deleteDataFromPostgres();
 //     const dataFromMySQL = await getDataFromMySQL();
 //     await insertDataToPostgres(dataFromMySQL);
 //     console.log(
 //       "Data insertion task completed.",
-//       moment().format("YYYY-MM-DD HH:mm:ss")
+//       moment().format("YYYY-MM-DD HH:mm:ss"),
 //     );
 //   } catch (err) {
 //     console.error("Error:", err);
