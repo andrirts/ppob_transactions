@@ -131,18 +131,32 @@ async function insertDataToPostgres(datas) {
 
 async function deleteDataFromPostgres() {
   let client;
+  let conn;
   try {
+    conn = await poolMy.getConnection();
     client = await poolPg.connect();
-    const query = `DELETE FROM summary_transaction
-                   WHERE tanggal::date >= NOW() - INTERVAL '2 day';`;
-    await client.query(query);
+    const queryGetDate = `select tanggal from transaksi t 
+group by TANGGAL;`;
+    const [rows] = await conn.query(queryGetDate);
+    if (!rows.length) return;
+
+    const dates = rows.map((r) => moment(r.tanggal).format("YYYY-MM-DD"));
+    console.log(dates);
+
+    await client.query(
+      `
+  DELETE FROM summary_transaction
+  WHERE tanggal = ANY($1::text[])
+  `,
+      [dates],
+    );
     console.log("Old data deleted successfully");
   } catch (err) {
+    console.log(err);
     throw err;
   } finally {
-    if (client) {
-      client.release();
-    }
+    if (client) client.release();
+    if (conn) conn.release();
   }
 }
 
