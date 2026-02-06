@@ -200,23 +200,23 @@ group by TANGGAL;`;
   }
 }
 
-// cron.schedule("0 0 */3 * * *", async () => {
-//   try {
-//     console.log(
-//       "Starting data insertion task...",
-//       moment().format("YYYY-MM-DD HH:mm:ss"),
-//     );
-//     await deleteDataFromPostgres();
-//     const dataFromMySQL = await getDataFromMySQL();
-//     await insertDataToPostgres(dataFromMySQL);
-//     console.log(
-//       "Data insertion task completed.",
-//       moment().format("YYYY-MM-DD HH:mm:ss"),
-//     );
-//   } catch (err) {
-//     console.error("Error:", err);
-//   }
-// });
+cron.schedule("0 0 */3 * * *", async () => {
+  try {
+    console.log(
+      "Starting data insertion task...",
+      moment().format("YYYY-MM-DD HH:mm:ss"),
+    );
+    await deleteDataFromPostgres();
+    const dataFromMySQL = await getDataFromMySQL();
+    await insertDataToPostgres(dataFromMySQL);
+    console.log(
+      "Data insertion task completed.",
+      moment().format("YYYY-MM-DD HH:mm:ss"),
+    );
+  } catch (err) {
+    console.error("Error:", err);
+  }
+});
 
 // (async () => {
 //   try {
