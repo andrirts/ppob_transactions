@@ -40,26 +40,64 @@ async function getDataFromMySQL() {
   try {
     conn = await poolMy.getConnection();
     const query = `
-    select CONCAT(
-        LPAD(FLOOR(HOUR(JAM)/3)*3, 2, '0'), ':00 - ',
-        LPAD(FLOOR(HOUR(JAM)/3)*3 + 2, 2, '0'), ':59'
-    ) AS jam_group,
-    tanggal,
-    NAMAPRODUK,
-    NamaReseller,
-    t.KodeProduk,
-    case
-    	when statustransaksi = 1 then 'SUKSES'
-    	when statustransaksi = 2 then 'GAGAL'
-        else 'PENDING'
-    end as status_transaksi
-    ,
-    count(*) as total_trx,sum(case when statustransaksi = 1 then HARGAJUAL else 0 END) as amount
-    from transaksi t
-    join produk p
-    on p.KodeProduk = t.KodeProduk
-    where jenistransaksi in ('1','6')
-    group by NamaReseller, statustransaksi, KodeProduk, jam_group, tanggal;
+    SELECT
+    x.jam_group,
+    x.tanggal,
+    x.NAMAPRODUK,
+    x.NamaReseller,
+    x.KodeProduk,
+    x.status_transaksi,
+    x.total_trx,
+    x.amount,
+    ROUND(y.sukses_trx / y.total_trx * 100, 2) AS success_rate
+FROM
+(
+    SELECT
+        CONCAT(
+            LPAD(FLOOR(HOUR(JAM)/3)*3, 2, '0'), ':00 - ',
+            LPAD(FLOOR(HOUR(JAM)/3)*3 + 2, 2, '0'), ':59'
+        ) AS jam_group,
+        tanggal,
+        NAMAPRODUK,
+        NamaReseller,
+        t.KodeProduk,
+        CASE
+            WHEN statustransaksi = 1 THEN 'SUKSES'
+            WHEN statustransaksi = 2 THEN 'GAGAL'
+            ELSE 'PENDING'
+        END AS status_transaksi,
+        COUNT(*) AS total_trx,
+        SUM(CASE WHEN statustransaksi = 1 THEN HARGAJUAL ELSE 0 END) AS amount
+    FROM transaksi t
+    JOIN produk p
+        ON p.KodeProduk = t.KodeProduk
+    WHERE jenistransaksi IN ('1','6')
+    GROUP BY
+        NamaReseller,
+        t.KodeProduk,
+        NAMAPRODUK,
+        tanggal,
+        jam_group,
+        statustransaksi
+) x
+JOIN
+(
+    SELECT
+        NamaReseller,
+        KodeProduk,
+        tanggal,
+        COUNT(*) AS total_trx,
+        SUM(CASE WHEN statustransaksi = 1 THEN 1 ELSE 0 END) AS sukses_trx
+    FROM transaksi
+    WHERE jenistransaksi IN ('1','6')
+    GROUP BY
+        NamaReseller,
+        KodeProduk,
+        tanggal
+    ) y
+    ON  x.NamaReseller = y.NamaReseller
+    AND x.KodeProduk   = y.KodeProduk
+    AND x.tanggal      = y.tanggal;
     `;
     const { date, startTime, endTime } = getPrevious3HourWindow();
 
@@ -92,6 +130,7 @@ async function insertDataToPostgres(datas) {
       client_name: data.NamaReseller,
       total_transaction: data.total_trx,
       total_amount: data.amount,
+      success_rate: data.success_rate,
     }));
 
     const cols = [
@@ -103,6 +142,7 @@ async function insertDataToPostgres(datas) {
       "client_name",
       "total_transaction",
       "total_amount",
+      "success_rate",
     ];
 
     const values = mappedDatas
@@ -160,23 +200,23 @@ group by TANGGAL;`;
   }
 }
 
-cron.schedule("0 0 */3 * * *", async () => {
-  try {
-    console.log(
-      "Starting data insertion task...",
-      moment().format("YYYY-MM-DD HH:mm:ss"),
-    );
-    await deleteDataFromPostgres();
-    const dataFromMySQL = await getDataFromMySQL();
-    await insertDataToPostgres(dataFromMySQL);
-    console.log(
-      "Data insertion task completed.",
-      moment().format("YYYY-MM-DD HH:mm:ss"),
-    );
-  } catch (err) {
-    console.error("Error:", err);
-  }
-});
+// cron.schedule("0 0 */3 * * *", async () => {
+//   try {
+//     console.log(
+//       "Starting data insertion task...",
+//       moment().format("YYYY-MM-DD HH:mm:ss"),
+//     );
+//     await deleteDataFromPostgres();
+//     const dataFromMySQL = await getDataFromMySQL();
+//     await insertDataToPostgres(dataFromMySQL);
+//     console.log(
+//       "Data insertion task completed.",
+//       moment().format("YYYY-MM-DD HH:mm:ss"),
+//     );
+//   } catch (err) {
+//     console.error("Error:", err);
+//   }
+// });
 
 // (async () => {
 //   try {
