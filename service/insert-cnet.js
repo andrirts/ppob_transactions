@@ -19,6 +19,14 @@ async function getMappingErrorMessage(str) {
     return "TARGET MSISDN BLOCK 1, PLEASE CHECK MSIDN";
   } else if (str.includes("TARGET MSISDN PENDING, PLEASE CHECK MSIDN")) {
     return "TARGET MSISDN PENDING, PLEASE CHECK MSIDN";
+  } else if (str.includes("FAILEDTOGETBALANCE")) {
+    return "FAILED TO GET BALANCE";
+  } else if (str.includes("SUBSSTATENOTALLOWED")) {
+    return "SUBSCRIBER STATE NOT ALLOWED";
+  } else if (
+    str.includes("MSISDN IS NOT ACTIVE AND NOT ALLOWED TO DO TRANSACTION")
+  ) {
+    return "MSISDN IS NOT ACTIVE AND NOT ALLOWED TO DO TRANSACTION";
   } else {
     return "Failed";
   }
@@ -153,7 +161,7 @@ async function getDataFromMySQL() {
         console.log(
           `MySQL connection timed out. Retrying ${retryCount}/${maxRetries} in ${
             retryDelay / 1000
-          } seconds...`
+          } seconds...`,
         );
         await new Promise((resolve) => setTimeout(resolve, retryDelay));
         return getDataFromMySQL();
@@ -199,7 +207,7 @@ async function checkDataExists(datas) {
         console.log(
           `PostgreSQL connection timed out. Retrying ${retryCount}/${maxRetries} in ${
             retryDelay / 1000
-          } seconds...`
+          } seconds...`,
         );
         await new Promise((resolve) => setTimeout(resolve, retryDelay));
         return checkDataExists(datas);
@@ -261,12 +269,12 @@ async function insertOrUpdateDataToPostgres(datas, objMappedDatas) {
       const values = objMappedDatas.newDatas
         .map(
           (_, i) =>
-            `(${cols.map((_, j) => `$${i * cols.length + j + 1}`).join(",")})`
+            `(${cols.map((_, j) => `$${i * cols.length + j + 1}`).join(",")})`,
         )
         .join(",");
 
       const flatValues = objMappedDatas.newDatas.flatMap((obj) =>
-        cols.map((c) => obj[c])
+        cols.map((c) => obj[c]),
       );
 
       const query = `INSERT INTO cnet (${cols.join(",")}) VALUES ${values}`;
@@ -281,7 +289,7 @@ async function insertOrUpdateDataToPostgres(datas, objMappedDatas) {
         console.log(
           `PostgreSQL connection timed out. Retrying ${retryCount}/${maxRetries} in ${
             retryDelay / 1000
-          } seconds...`
+          } seconds...`,
         );
         await new Promise((resolve) => setTimeout(resolve, retryDelay));
         return insertOrUpdateDataToPostgres(datas, objMappedDatas);
@@ -319,7 +327,7 @@ async function runTask() {
   try {
     console.log(
       "Fetching data from MySQL...",
-      moment().format("YYYY-MM-DD HH:mm:ss")
+      moment().format("YYYY-MM-DD HH:mm:ss"),
     );
     const data = await getDataFromMySQL();
     const { existDatas, newDatas } = await checkDataExists(data);
@@ -341,7 +349,7 @@ cron.schedule("0 5 * * *", async () => {
   try {
     console.log(
       "Deleting old data from PostgreSQL...",
-      moment().format("YYYY-MM-DD HH:mm:ss")
+      moment().format("YYYY-MM-DD HH:mm:ss"),
     );
     await deleteOldData();
   } catch (error) {
@@ -353,7 +361,7 @@ cron.schedule("*/20 * * * * ", async () => {
   try {
     console.log(
       "Fetching data from MySQL...",
-      moment().format("YYYY-MM-DD HH:mm:ss")
+      moment().format("YYYY-MM-DD HH:mm:ss"),
     );
 
     const data = await getDataFromMySQL();
