@@ -23,10 +23,10 @@ async function getMappingErrorMessage(str) {
     return "FAILED TO GET BALANCE";
   } else if (str.includes("SUBSSTATENOTALLOWED")) {
     return "SUBSCRIBER STATE NOT ALLOWED";
-  } else if (
-    str.includes("MSISDN IS NOT ACTIVE AND NOT ALLOWED TO DO TRANSACTION")
-  ) {
-    return "MSISDN IS NOT ACTIVE AND NOT ALLOWED TO DO TRANSACTION";
+  } else if (str.includes("SUBSSTATENOTALLOWED")) {
+    return "SUBSCRIBER STATE NOT ALLOWED";
+  } else if (str.includes("NOMOR TUJUAN SALAH")) {
+    return "NOMOR TUJUAN SALAH";
   } else {
     return "Failed";
   }
