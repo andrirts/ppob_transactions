@@ -71,7 +71,7 @@ FROM
     FROM transaksi t
     JOIN produk p
         ON p.KodeProduk = t.KodeProduk
-    WHERE jenistransaksi IN ('1','6')
+    WHERE jenistransaksi IN ('1','6','8')
     GROUP BY
         NamaReseller,
         t.KodeProduk,
@@ -89,7 +89,7 @@ JOIN
         COUNT(*) AS total_trx,
         SUM(CASE WHEN statustransaksi = 1 THEN 1 ELSE 0 END) AS sukses_trx
     FROM transaksi
-    WHERE jenistransaksi IN ('1','6')
+    WHERE jenistransaksi IN ('1','6','8')
     GROUP BY
         NamaReseller,
         KodeProduk,
