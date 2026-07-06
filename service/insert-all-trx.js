@@ -3,38 +3,76 @@ const poolMy = require("../db/mysql");
 const moment = require("moment");
 const cron = require("node-cron");
 
-// function getPrevious3Hours() {
-//   const threeHoursAgo = moment().subtract(3, "hours").format("HH:mm:ss");
-//   const now = moment().format("HH:mm:ss");
-//   const getDateThreeHoursAgo = moment()
-//     .subtract(3, "hours")
-//     .format("YYYY-MM-DD");
-//   console.log(threeHoursAgo, getDateThreeHoursAgo, now);
-//   return {
-//     now,
-//     threeHoursAgo,
-//     getDateThreeHoursAgo,
-//   };
-// }
+// ============================================================
+// CONFIGURATION
+// ============================================================
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 5000; // 5s -> 10s -> 20s (exponential)
+const TRANSIENT_ERROR_CODES = [
+  "ETIMEDOUT",
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "PROTOCOL_CONNECTION_LOST",
+  "EPIPE",
+  "EAI_AGAIN",
+];
 
-function getPrevious3HourWindow() {
-  const now = moment();
+// ============================================================
+// UTILITY: Retry with Exponential Backoff
+// ============================================================
+async function withRetry(fn, fnName, maxRetries = MAX_RETRIES, baseDelayMs = BASE_DELAY_MS) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const isTransient = TRANSIENT_ERROR_CODES.includes(err.code);
 
-  // Align to the nearest 3-hour boundary
-  const end = moment(now)
-    .minute(0)
-    .second(0)
-    .millisecond(0)
-    .subtract(now.hour() % 3, "hours");
-
-  const start = moment(end).subtract(3, "hours");
-  return {
-    date: start.format("YYYY-MM-DD"),
-    startTime: start.format("HH:mm:ss"),
-    endTime: end.subtract(1, "seconds").format("HH:mm:ss"), // to make it inclusive of the last second
-  };
+      if (isTransient && attempt < maxRetries) {
+        const delay = baseDelayMs * Math.pow(2, attempt - 1);
+        console.warn(
+          `[RETRY] ${fnName} failed (attempt ${attempt}/${maxRetries}): ${err.code}. Retrying in ${delay / 1000}s...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      } else {
+        console.error(
+          `[FAILED] ${fnName} failed after ${attempt} attempt(s):`,
+          err.message || err,
+        );
+        throw err;
+      }
+    }
+  }
 }
 
+// ============================================================
+// UTILITY: Sleep
+// ============================================================
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ============================================================
+// STEP 1: Fetch dates from MySQL
+// ============================================================
+async function getDatesFromMySQL() {
+  let conn;
+  try {
+    conn = await poolMy.getConnection();
+    const queryGetDate = `SELECT tanggal FROM transaksi t GROUP BY TANGGAL;`;
+    const [rows] = await conn.query(queryGetDate);
+    if (!rows.length) return [];
+    return rows.map((r) => moment(r.tanggal).format("YYYY-MM-DD"));
+  } catch (err) {
+    console.error("Error getting dates from MySQL:", err.message || err);
+    throw err;
+  } finally {
+    if (conn) conn.release();
+  }
+}
+
+// ============================================================
+// STEP 2: Fetch recap data from MySQL
+// ============================================================
 async function getDataFromMySQL() {
   let conn;
   try {
@@ -105,20 +143,33 @@ JOIN
     console.log(rows.length, "rows found");
     return rows;
   } catch (err) {
-    console.error("Error getting MySQL connection:", err);
+    console.error("Error getting MySQL connection:", err.message || err);
     throw err;
   } finally {
     if (conn) conn.release();
   }
 }
 
-async function insertDataToPostgres(datas) {
-  let client;
+// ============================================================
+// STEP 3: Atomic DELETE + INSERT in PostgreSQL Transaction
+// ============================================================
+async function syncToPostgres(dates, datas) {
+  if (datas.length === 0) {
+    console.log("No data to insert, skipping sync");
+    return;
+  }
+
+  const client = await poolPg.connect();
   try {
-    client = await poolPg.connect();
-    if (datas.length === 0) {
-      console.log("No data to insert");
-      return;
+    // --- BEGIN TRANSACTION ---
+    await client.query("BEGIN");
+
+    if (dates.length > 0) {
+      await client.query(
+        `DELETE FROM summary_transaction WHERE tanggal = ANY($1::text[])`,
+        [dates],
+      );
+      console.log("Old data deleted successfully (within transaction)");
     }
 
     const mappedDatas = datas.map((data) => ({
@@ -145,93 +196,133 @@ async function insertDataToPostgres(datas) {
       "success_rate",
     ];
 
-    const values = mappedDatas
-      .map(
-        (_, i) =>
-          `(${cols.map((_, j) => `$${i * cols.length + j + 1}`).join(",")})`,
-      )
-      .join(",");
+    const CHUNK_SIZE = 500;
+    let insertedCount = 0;
 
-    const flatValues = mappedDatas.flatMap((obj) => cols.map((c) => obj[c]));
+    for (let i = 0; i < mappedDatas.length; i += CHUNK_SIZE) {
+      const chunk = mappedDatas.slice(i, i + CHUNK_SIZE);
 
-    const query = `INSERT INTO summary_transaction (${cols.join(
-      ",",
-    )}) VALUES ${values}`;
+      const values = chunk
+        .map(
+          (_, idx) =>
+            `(${cols.map((_, j) => `$${idx * cols.length + j + 1}`).join(",")})`,
+        )
+        .join(",");
 
-    await client.query(query, flatValues);
-    console.log("Data inserted successfully");
-  } catch (err) {
-    throw err;
-  } finally {
-    if (client) {
-      client.release();
+      const flatValues = chunk.flatMap((obj) => cols.map((c) => obj[c]));
+
+      const query = `INSERT INTO summary_transaction (${cols.join(
+        ",",
+      )}) VALUES ${values}`;
+
+      await client.query(query, flatValues);
+      insertedCount += chunk.length;
     }
-  }
-}
 
-async function deleteDataFromPostgres() {
-  let client;
-  let conn;
-  try {
-    conn = await poolMy.getConnection();
-    client = await poolPg.connect();
-    const queryGetDate = `select tanggal from transaksi t 
-group by TANGGAL;`;
-    const [rows] = await conn.query(queryGetDate);
-    if (!rows.length) return;
-
-    const dates = rows.map((r) => moment(r.tanggal).format("YYYY-MM-DD"));
-    console.log(dates);
-
-    await client.query(
-      `
-  DELETE FROM summary_transaction
-  WHERE tanggal = ANY($1::text[])
-  `,
-      [dates],
+    // --- COMMIT TRANSACTION ---
+    await client.query("COMMIT");
+    console.log(
+      `Data inserted successfully — ${insertedCount} rows (transaction committed)`,
     );
-    console.log("Old data deleted successfully");
   } catch (err) {
-    console.log(err);
+    // --- ROLLBACK on any failure ---
+    try {
+      await client.query("ROLLBACK");
+      console.error(
+        "[ROLLBACK] Transaction rolled back. Data lama tetap utuh di PostgreSQL.",
+      );
+    } catch (rollbackErr) {
+      console.error("[ROLLBACK ERROR]", rollbackErr.message || rollbackErr);
+    }
     throw err;
   } finally {
-    if (client) client.release();
-    if (conn) conn.release();
+    client.release();
   }
 }
 
+// ============================================================
+// HELPER: Get previous 3-hour window
+// ============================================================
+function getPrevious3HourWindow() {
+  const now = moment();
+
+  const end = moment(now)
+    .minute(0)
+    .second(0)
+    .millisecond(0)
+    .subtract(now.hour() % 3, "hours");
+
+  const start = moment(end).subtract(3, "hours");
+  return {
+    date: start.format("YYYY-MM-DD"),
+    startTime: start.format("HH:mm:ss"),
+    endTime: end.subtract(1, "seconds").format("HH:mm:ss"),
+  };
+}
+
+async function runSync() {
+  console.log(
+    "Starting data insertion task...",
+    moment().format("YYYY-MM-DD HH:mm:ss"),
+  );
+
+  // STEP 1: Fetch dates from MySQL (with retry)
+  const dates = await withRetry(
+    () => getDatesFromMySQL(),
+    "getDatesFromMySQL",
+  );
+
+  if (dates.length === 0) {
+    console.log("No dates found in MySQL, skipping sync.");
+    return;
+  }
+  console.log(dates);
+
+  // STEP 2: Fetch recap data from MySQL (with retry)
+  const dataFromMySQL = await withRetry(
+    () => getDataFromMySQL(),
+    "getDataFromMySQL",
+  );
+
+  if (dataFromMySQL.length === 0) {
+    console.log("No recap data found in MySQL, skipping sync.");
+    return;
+  }
+
+  // STEP 3: Atomic DELETE + INSERT in PostgreSQL (with retry)
+  await withRetry(
+    () => syncToPostgres(dates, dataFromMySQL),
+    "syncToPostgres",
+  );
+
+  console.log(
+    "Data insertion task completed.",
+    moment().format("YYYY-MM-DD HH:mm:ss"),
+  );
+}
+
+// ============================================================
+// CRON SCHEDULE: Every 3 hours
+// ============================================================
 cron.schedule("0 0 */3 * * *", async () => {
   try {
-    console.log(
-      "Starting data insertion task...",
-      moment().format("YYYY-MM-DD HH:mm:ss"),
-    );
-    await deleteDataFromPostgres();
-    const dataFromMySQL = await getDataFromMySQL();
-    await insertDataToPostgres(dataFromMySQL);
-    console.log(
-      "Data insertion task completed.",
-      moment().format("YYYY-MM-DD HH:mm:ss"),
-    );
+    await runSync();
   } catch (err) {
-    console.error("Error:", err);
+    console.error(
+      "[CRON] Sync FAILED after all retries:",
+      moment().format("YYYY-MM-DD HH:mm:ss"),
+      err.message || err,
+    );
   }
 });
 
+// ============================================================
+// MANUAL RUN (uncomment to test)
+// ============================================================
 // (async () => {
 //   try {
-//     console.log(
-//       "Starting data insertion task...",
-//       moment().format("YYYY-MM-DD HH:mm:ss"),
-//     );
-//     await deleteDataFromPostgres();
-//     const dataFromMySQL = await getDataFromMySQL();
-//     await insertDataToPostgres(dataFromMySQL);
-//     console.log(
-//       "Data insertion task completed.",
-//       moment().format("YYYY-MM-DD HH:mm:ss"),
-//     );
+//     await runSync();
 //   } catch (err) {
-//     console.error("Error:", err);
+//     console.error("Manual run failed:", err);
 //   }
 // })();
