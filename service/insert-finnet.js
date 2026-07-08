@@ -4,7 +4,7 @@ const moment = require("moment");
 const cron = require("node-cron");
 const { findStringBetween } = require("../utils/utils");
 
-async function getDataFromMySQL() {
+async function getDataFromMySQL(targetDate) {
   let client;
   try {
     client = await poolMy.getConnection();
@@ -13,17 +13,17 @@ async function getDataFromMySQL() {
     JOIN produk p on th.KodeProduk = p.KodeProduk
     WHERE th.namaterminal = ?
     AND th.NamaReseller NOT REGEXP ? 
+    AND DATE(th.tanggal) = ?
     ORDER BY th.idtransaksi ASC
     `;
-    // const tanggal = moment().subtract(1, "days").format("YYYY-MM-DD");
-    // const tanggal = "2025-09-22";
+
     const namaterminal = "FINNET";
     const namaReseller = "TEST|DEV|RTS";
 
     const [rows] = await client.query(query, [
       namaterminal,
-      //   tanggal,
       namaReseller,
+      targetDate,
     ]);
 
     console.log(rows.length, "rows found");
@@ -44,10 +44,10 @@ async function getDataFromMySQL() {
       let information =
         keterangan != null
           ? keterangan
-              .split(".")[0]
-              .replace(/\d+/g, "")
-              .replace("MAAF, ", "")
-              .trim()
+            .split(".")[0]
+            .replace(/\d+/g, "")
+            .replace("MAAF, ", "")
+            .trim()
           : "No Respon From Finnet";
       information =
         information.charAt(0).toUpperCase() +
@@ -57,10 +57,10 @@ async function getDataFromMySQL() {
       const status = !rc
         ? "Failed"
         : rc === "68"
-        ? "Suspect"
-        : rc !== "00"
-        ? "Failed"
-        : "Success";
+          ? "Suspect"
+          : rc !== "00"
+            ? "Failed"
+            : "Success";
       const product = data["NAMAPRODUK"];
       const sellPrice = data["HargaJual"] ? data["HargaJual"] : 0;
       let sourceOfAlerts = "";
@@ -235,11 +235,12 @@ async function deleteOldData() {
 // Create the same function as above but execute every 10 minutes using interval
 async function runTask() {
   try {
+    const today = moment().format("YYYY-MM-DD");
     console.log(
-      "Fetching data from MySQL...",
+      `Fetching data from MySQL for ${today}...`,
       moment().format("YYYY-MM-DD HH:mm:ss")
     );
-    const data = await getDataFromMySQL();
+    const data = await getDataFromMySQL(today);
     const { existDatas, newDatas } = await checkDataExists(data);
     await insertOrUpdateDataToPostgres(data, { existDatas, newDatas });
 
@@ -262,6 +263,17 @@ cron.schedule("0 5 * * *", async () => {
       moment().format("YYYY-MM-DD HH:mm:ss")
     );
     await deleteOldData();
+
+    // Re-sync final yesterday data
+    const yesterday = moment().subtract(1, "days").format("YYYY-MM-DD");
+    console.log(
+      `Syncing final data from MySQL for ${yesterday}...`,
+      moment().format("YYYY-MM-DD HH:mm:ss")
+    );
+    const data = await getDataFromMySQL(yesterday);
+    const { existDatas, newDatas } = await checkDataExists(data);
+    await insertOrUpdateDataToPostgres(data, { existDatas, newDatas });
+    console.log("Final sync completed.", moment().format("YYYY-MM-DD HH:mm:ss"));
   } catch (error) {
     console.error("Error:", error);
   }

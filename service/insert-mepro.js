@@ -35,7 +35,7 @@ async function getMappingErrorMessage(str) {
   }
 }
 
-async function getDataFromMySQL() {
+async function getDataFromMySQL(targetDate) {
   let conn;
   try {
     conn = await poolMy.getConnection();
@@ -45,19 +45,17 @@ async function getDataFromMySQL() {
     JOIN produk p on th.KodeProduk = p.KodeProduk
     WHERE th.namaterminal = ?
     AND th.NamaReseller NOT REGEXP ?
+    AND DATE(th.tanggal) = ?
     ORDER BY th.idtransaksi ASC
     `;
-    // const tanggal = moment().subtract(1, "days").format("YYYY-MM-DD");
-    // const startDate = "2025-09-28";
-    // const endDate = "2025-09-28";
+
     const namaterminal = "MEPRO";
     const namaReseller = "TEST|DEV|RTS";
 
     const [rows] = await conn.query(query, [
       namaterminal,
       namaReseller,
-      //   startDate,
-      //   endDate,
+      targetDate,
     ]);
 
     console.log(rows.length, "rows found");
@@ -171,8 +169,7 @@ async function getDataFromMySQL() {
       if (retryCount < maxRetries) {
         retryCount++;
         console.log(
-          `MySQL connection timed out. Retrying ${retryCount}/${maxRetries} in ${
-            retryDelay / 1000
+          `MySQL connection timed out. Retrying ${retryCount}/${maxRetries} in ${retryDelay / 1000
           } seconds...`
         );
         await new Promise((resolve) => setTimeout(resolve, retryDelay));
@@ -217,8 +214,7 @@ async function checkDataExists(datas) {
       if (retryCount < maxRetries) {
         retryCount++;
         console.log(
-          `PostgreSQL connection timed out. Retrying ${retryCount}/${maxRetries} in ${
-            retryDelay / 1000
+          `PostgreSQL connection timed out. Retrying ${retryCount}/${maxRetries} in ${retryDelay / 1000
           } seconds...`
         );
         await new Promise((resolve) => setTimeout(resolve, retryDelay));
@@ -298,8 +294,7 @@ async function insertOrUpdateDataToPostgres(datas, objMappedDatas) {
       if (retryCount < maxRetries) {
         retryCount++;
         console.log(
-          `PostgreSQL connection timed out. Retrying ${retryCount}/${maxRetries} in ${
-            retryDelay / 1000
+          `PostgreSQL connection timed out. Retrying ${retryCount}/${maxRetries} in ${retryDelay / 1000
           } seconds...`
         );
         await new Promise((resolve) => setTimeout(resolve, retryDelay));
@@ -337,11 +332,12 @@ async function deleteOldData() {
 
 async function runTask() {
   try {
+    const today = moment().format("YYYY-MM-DD");
     console.log(
-      "Fetching data from MySQL...",
+      `Fetching data from MySQL for ${today}...`,
       moment().format("YYYY-MM-DD HH:mm:ss")
     );
-    const data = await getDataFromMySQL();
+    const data = await getDataFromMySQL(today);
     const { existDatas, newDatas } = await checkDataExists(data);
     await insertOrUpdateDataToPostgres(data, { existDatas, newDatas });
 
@@ -365,6 +361,17 @@ cron.schedule("0 5 * * *", async () => {
       moment().format("YYYY-MM-DD HH:mm:ss")
     );
     await deleteOldData();
+
+    // Re-sync final yesterday data
+    const yesterday = moment().subtract(1, "days").format("YYYY-MM-DD");
+    console.log(
+      `Syncing final data from MySQL for ${yesterday}...`,
+      moment().format("YYYY-MM-DD HH:mm:ss")
+    );
+    const data = await getDataFromMySQL(yesterday);
+    const { existDatas, newDatas } = await checkDataExists(data);
+    await insertOrUpdateDataToPostgres(data, { existDatas, newDatas });
+    console.log("Final sync completed.", moment().format("YYYY-MM-DD HH:mm:ss"));
   } catch (error) {
     console.error("Error:", error);
   }
@@ -372,12 +379,13 @@ cron.schedule("0 5 * * *", async () => {
 
 cron.schedule("*/20 * * * * ", async () => {
   try {
+    const today = moment().format("YYYY-MM-DD");
     console.log(
-      "Fetching data from MySQL...",
+      `Fetching data from MySQL for ${today}...`,
       moment().format("YYYY-MM-DD HH:mm:ss")
     );
 
-    const data = await getDataFromMySQL();
+    const data = await getDataFromMySQL(today);
     const { existDatas, newDatas } = await checkDataExists(data);
     await insertOrUpdateDataToPostgres(data, { existDatas, newDatas });
 
