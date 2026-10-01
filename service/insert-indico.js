@@ -31,49 +31,25 @@ async function getDataFromMySQL(targetDate) {
     const groupedDatas = [];
     for (let i = 0; i < rows.length; i++) {
       const data = rows[i];
-      const rc = await findStringBetween(
-        data["keterangan"],
-        "RESULTCODE:",
-        ",RESULTDESC"
-      );
-      let keterangan = await findStringBetween(
-        data["keterangan"],
-        "RESULTDESC:",
-        ",PRODUCTCODE"
-      );
-      let information =
-        keterangan != null
-          ? keterangan
-            .split(".")[0]
-            .replace(/\d+/g, "")
-            .replace("MAAF, ", "")
-            .trim()
-          : "No Respon From INDICO";
-      information =
-        information.charAt(0).toUpperCase() +
-        information.slice(1).toLowerCase();
-      information = information === "Approve" ? "Success" : information;
-      let resultCode = rc != null ? `resultCode:${rc}` : "NULL";
-      const status = !rc
-        ? "Failed"
-        : rc === "68"
-          ? "Suspect"
-          : rc !== "00"
-            ? "Failed"
-            : "Success";
+      const keteranganRaw = data["keterangan"] || "";
+      
+      let extractedStatus = null;
+      let extractedMsg = null;
+      
+      const statusMatch = keteranganRaw.match(/STATUS:\s*([^,]+)/);
+      if (statusMatch) extractedStatus = statusMatch[1].trim();
+      
+      const msgMatch = keteranganRaw.match(/MSG:\s*([^}]+)/);
+      if (msgMatch) extractedMsg = msgMatch[1].trim();
+
+      let information = extractedMsg ? extractedMsg : "No Respon From INDICO";
+      let resultCode = extractedStatus ? `STATUS:${extractedStatus}` : "NULL";
+      
+      const status = extractedStatus === "SUKSES" ? "Success" : "Failed";
       const product = data["NAMAPRODUK"];
       const sellPrice = data["HargaJual"] ? data["HargaJual"] : 0;
-      let sourceOfAlerts = "";
-      if (rc === "17") {
-        sourceOfAlerts = "RTS";
-      } else if (rc === "00" || rc === "14") {
-        if (rc === "14") {
-          countResponse14 = 1;
-        }
-        sourceOfAlerts = "Partner";
-      } else {
-        sourceOfAlerts = "INDICO";
-      }
+      
+      let sourceOfAlerts = status === "Success" ? "Partner" : "INDICO";
       const dateTransaction = moment(data["tanggal"]).format("YYYY-MM-DD");
 
       const findIfExists = groupedDatas.findIndex((item) => {
