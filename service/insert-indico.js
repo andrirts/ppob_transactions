@@ -40,7 +40,11 @@ async function getDataFromMySQL(targetDate) {
       if (statusMatch) extractedStatus = statusMatch[1].trim();
       
       const msgMatch = keteranganRaw.match(/MSG:\s*([^}]+)/);
-      if (msgMatch) extractedMsg = msgMatch[1].trim();
+      if (msgMatch) {
+        let rawMsg = msgMatch[1].trim();
+        // Remove " - WHOLESALE..." and everything after it
+        extractedMsg = rawMsg.split(/\s*-\s*WHOLESALE/i)[0].trim();
+      }
 
       let information = extractedMsg ? extractedMsg : "No Respon From INDICO";
       let resultCode = extractedStatus ? `STATUS:${extractedStatus}` : "NULL";
